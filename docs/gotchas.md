@@ -4,6 +4,14 @@ Things that surprised us. New entries go on top. Each entry: what happened, why,
 
 ---
 
+## 2026-05-17 · Spring `@ConfigurationProperties` binder does not support `@JsonSubTypes`
+
+I modelled `ButtonAction` as a sealed interface (`PlayStation`, `Key`) with Jackson's `@JsonTypeInfo(use=NAME, property="type")` + `@JsonSubTypes(...)` annotations and expected `application.yml` binding (`action.type: play_station`, `action.station: vltava`) to work. It bound the outer `ButtonBinding` but left the inner `action` field null/empty. Spring's properties binder is **not** Jackson — it doesn't read `@JsonSubTypes`. The polymorphic-by-property-discriminator pattern from REST/JSON DTOs doesn't translate.
+
+**How to apply:** for `@ConfigurationProperties`, use a flat record with an enum `type` and nullable fields, validate in the canonical constructor. Keep polymorphic Jackson types for the REST/JSON layer if you want them.
+
+---
+
 ## 2026-05-17 · `Map.copyOf` silently breaks `LinkedHashMap` insertion order
 
 `StationRegistry` built a `LinkedHashMap` to preserve config order, then returned `Map.copyOf(result)`. The copy is unmodifiable but **its iteration order is not guaranteed** — JDK can reshuffle for security/hashing reasons. We hit this when the controller test asserted vltava-first and got fip-first instead. Fixed by returning `Collections.unmodifiableMap(result)` (which is a view that preserves the underlying order).

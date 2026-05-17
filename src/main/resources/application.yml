@@ -22,3 +22,27 @@ radio:
       name: ČRo Radio Wave
       stream: http://icecast2.rozhlas.cz/radiowave-mp3-128
       button: 2
+  buttons:
+    enabled: false
+    debounce: 50ms
+    bindings:
+      - gpio: 17
+        action:
+          type: play_station
+          station: vltava
+      - gpio: 27
+        action:
+          type: play_station
+          station: radiowave
+      - gpio: 19
+        action:
+          type: key
+          key: PLAY_PAUSE
+      - gpio: 16
+        action:
+          type: key
+          key: VOLUME_UP
+      - gpio: 26
+        action:
+          type: key
+          key: VOLUME_DOWN

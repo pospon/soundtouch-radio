@@ -9,7 +9,7 @@ One row per phase. Status, when it cleared exit criteria, and notable deviations
 | 3 — `StationRegistry` + REST API | ✅ done | 2026-05-17 | Station configured in `application.yml` under `radio.stations` (separated to own file in Phase 8). `StationRegistry` validates ids/sources/buttons at startup. `StationService.play(id)` wakes on STANDBY then selects. `RadioController` exposes `GET /api/stations`, `POST /api/play/{id}`, `POST /api/key/{key}` (allowlisted), `GET/PUT /api/volume`. `HealthController` does `GET /api/health` (200 UP / 503 DOWN). 9 `@WebMvcTest` + 10 service/registry unit tests green; live curl against speaker confirmed `POST /api/play/vltava` plays. `Phase2SmokeRunner` deleted. One new gotcha (`@WebMvcTest(controllers=)` doesn't register beans in Boot 4). |
 | 4 — PWA frontend | ✅ done (partial exit-criterion until Phase 5) | 2026-05-17 | `PlayerState` (`AtomicReference<PlayerStateSnapshot>` + `ApplicationEventPublisher`). New endpoints: `GET /api/now-playing`, `GET /api/events` (SSE with 25-s heartbeat). PWA at `/`: vanilla JS single page, station tiles, transport, volume readout, refresh, dark theme, `manifest.json` + 192/512 icons (sips-rendered from `static/icon.svg`). Live smoke: SSE pushes verified end-to-end via curl (initial-state-on-connect + push-on-change). **Speaker-remote / AirPlay-originated changes won't appear in the PWA until Phase 5 wires the WS listener** — `PlayerState` has no third writer yet. New gotcha: SIGTERM doesn't gracefully stop the app with active SSE + `@EnableScheduling`; needs `kill -9` locally. |
 | 5 — WebSocket listener | ✅ done (cold-start reconnect verified; mid-session reconnect untested) | 2026-05-17 | `SoundTouchEventListener` opens `ws://10.0.0.148:8080/` with subprotocol `gabbo` on `ApplicationReadyEvent`. `UpdatesDispatcher` parses `<updates>` frames (`volumeUpdated`, `nowSelectionUpdated`) into `PlayerState` writes. On connect, resyncs by calling REST `/volume` + `/now_playing`. `@PreDestroy` closes WS and SSE emitters. Live verified: external `POST /volume` to speaker propagates through WS → dispatcher → PlayerState → SSE in <1s. 4 new gotchas (`Map.copyOf` order bug, `errorUpdate 4505` false alarm, `nowSelectionUpdated` vs `nowPlayingUpdated`, captured WS fixtures). 7 new dispatcher tests + 2 new PlayerState tests; 44 unit tests pass. |
-| 6 — Physical buttons | ⏳ | — | |
+| 6 — Physical buttons | ✅ done (software only — hardware press untested) | 2026-05-17 | `diozero-core:1.4.1`. `ButtonsProperties` under `radio.buttons` with `enabled` + `debounce` + `bindings[{ gpio, action { type, station\|key } }]`. `ButtonHandler` `@PostConstruct` builds a `com.diozero.devices.Button` per binding (PULL_UP, activeHigh=false, FALLING edge) and wires `whenPressed → dispatch(binding)`. Dispatch switches on `action.type` to `StationService.play` or `SoundTouchClient.pressKey`. Each binding attempt is wrapped in try/catch — a missing chip on Mac logs WARN per binding and the app continues. `@PreDestroy` closes all buttons. 6 new unit tests (4 dispatch + 2 binding). Plan deviation: `ButtonAction` is a flat record (`type/station/key`) instead of a sealed interface — Spring's `@ConfigurationProperties` binder doesn't support `@JsonSubTypes`. **Hardware not wired yet** — exit criterion ("pressing button 1 plays Vltava") will be verified after wiring on the Pi. |
 | 7 — OLED display | ⏳ | — | |
 | 8 — Packaging & deployment | ⏳ | — | Will use the auto-sync-from-GitHub pattern from `pospon/tuya-horakova` rather than the systemd recipe in `PLAN.md` §8 (TBD when we get there). |
 
@@ -124,3 +124,28 @@ Exit-criterion verification:
 Open follow-ups:
 - Mid-session reconnect after speaker power-cycle. Will fall out of Phase 8 testing.
 - `bootRun` SIGTERM still hangs (gradle fork swallows the signal); systemd in Phase 8 will fix it.
+
+## Phase 6 detail
+
+Added:
+- `com.diozero:diozero-core:1.4.1` dependency.
+- `cz.poposkoc.radio.buttons.ButtonAction` (flat record with `type/station/key`).
+- `cz.poposkoc.radio.buttons.ButtonBinding` (record `{ gpio, action }`).
+- `cz.poposkoc.radio.config.ButtonsProperties` bound to `radio.buttons` (`enabled`, `debounce`, `bindings`).
+- `cz.poposkoc.radio.buttons.ButtonHandler` — `@Component` with `@PostConstruct` init and `@PreDestroy` close. Per binding: `Button.Builder.builder(gpio).setPullUpDown(PULL_UP).setActiveHigh(false).setTrigger(FALLING).build()` then `whenPressed(...)→ dispatch(binding)`. Try/catch around each binding's creation and around every dispatch.
+- 6 new unit tests covering both dispatch paths and the binding type-discrimination via Spring's binder.
+- Seed config in `application.yml` (`enabled: false`, 5 bindings: stations 1+2, PLAY_PAUSE, VOL_UP, VOL_DOWN).
+
+Plan deviations:
+- **`ButtonAction` is a flat record, not a sealed interface.** Spring's `@ConfigurationProperties` binder doesn't support `@JsonSubTypes` (that's Jackson-only). The flat shape (`type`, `station?`, `key?`) binds cleanly and validates in the canonical constructor.
+- **`buttons.enabled` defaults to `false`** so Mac dev hosts don't try to open GPIO. Pi profile / external config will flip this to `true` in Phase 8.
+- **No explicit debounce wiring.** Diozero's `Button.Builder` doesn't surface debounce; relying on the native driver default. The `debounce` property is parsed for forward-compat but currently only documented, not applied. Will revisit when we wire real hardware.
+- **Hardware not wired yet.** Plan exit criterion ("pressing physical button 1 plays Vltava") needs the GPIO breadboard. Will verify after Phase 6 hardware-prep on the Pi.
+
+Mac smoke verification:
+- Default boot (`enabled=false`): single INFO line `Buttons disabled ...; skipping GPIO setup`. App fully functional. ✅
+- Force `RADIO_BUTTONS_ENABLED=true` env: each of 5 bindings fails with `Failed to bind GPIO N (...): Chip not defined for pin ...` at WARN level. App continues to serve REST/SSE — verified by 200 responses on `/api/stations` and `/api/now-playing`. ✅
+
+Open follow-ups:
+- Hardware: solder/breadboard at least one button to GPIO 17 → GND on the Pi. Then deploy and verify the plan's exit criterion live.
+- Re-evaluate `debounce` wiring once we see real bouncing on hardware.
