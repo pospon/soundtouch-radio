@@ -4,6 +4,16 @@ Things that surprised us. New entries go on top. Each entry: what happened, why,
 
 ---
 
+## 2026-05-17 · Boot 4 `@WebMvcTest(controllers = ...)` does not actually register the listed controllers
+
+`@WebMvcTest(controllers = {RadioController.class, HealthController.class})` ran the test context, but every request returned 404 with `Handler = ResourceHttpRequestHandler`. The controller beans were not in the context — they fell through to the static-resource handler. Worked once we switched to `@WebMvcTest` (no `controllers =`) plus explicit `@Import({RadioController.class, HealthController.class, RadioExceptionHandler.class, ...})`.
+
+**Why:** in Boot 4 the `controllers` attribute appears to *filter* type-includes rather than *register* the listed classes as beans — without a scanned base package the listed controllers never get instantiated. We did not chase the exact semantics; `@Import` is unambiguous.
+
+**How to apply:** for `@WebMvcTest` in this project, list controllers and `@ControllerAdvice`s in `@Import`. Don't bother with the `controllers =` attribute.
+
+---
+
 ## 2026-05-17 · `POST /select` is silently ignored while the speaker is in STANDBY
 
 If `/now_playing` returns `source="STANDBY"`, sending `/select` still returns `<status>/select</status>` — but the speaker doesn't switch sources and stays asleep. After a successful-looking call, `/now_playing` is *still* `STANDBY`.

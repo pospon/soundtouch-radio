@@ -11,3 +11,14 @@ soundtouch:
 
 server:
   port: 8080
+
+radio:
+  stations:
+    - id: vltava
+      name: ČRo Vltava
+      stream: http://icecast2.rozhlas.cz/vltava-mp3-128
+      button: 1
+    - id: radiowave
+      name: ČRo Radio Wave
+      stream: http://icecast2.rozhlas.cz/radiowave-mp3-128
+      button: 2

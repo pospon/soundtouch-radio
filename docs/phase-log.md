@@ -6,7 +6,7 @@ One row per phase. Status, when it cleared exit criteria, and notable deviations
 |---|---|---|---|
 | 1 — Smoke test | ✅ done (1 open follow-up) | 2026-05-17 | Speaker found at `10.0.0.148`. `INTERNET_RADIO` source rejected (1005) — using `LOCAL_INTERNET_RADIO` instead. PAUSE/PLAY verified. **Open:** DHCP reservation on router. |
 | 2 — Spring Boot skeleton + `SoundTouchClient` | ✅ done | 2026-05-17 | Java (not Kotlin as plan), Boot 4.0.6, Spring 7, JDK 21 toolchain, Jackson 3 (`tools.jackson.*`). `SoundTouchClient` with `info / sources / nowPlaying / volume / select / setVolume / pressKey`. 10 MockWebServer tests + 2 live tests (gated via `SOUNDTOUCH_LIVE=true`) green. Smoke runner profile `phase2-smoke` selected Vltava end-to-end. Three new gotchas captured. |
-| 3 — `StationRegistry` + REST API | ⏳ | — | |
+| 3 — `StationRegistry` + REST API | ✅ done | 2026-05-17 | Station configured in `application.yml` under `radio.stations` (separated to own file in Phase 8). `StationRegistry` validates ids/sources/buttons at startup. `StationService.play(id)` wakes on STANDBY then selects. `RadioController` exposes `GET /api/stations`, `POST /api/play/{id}`, `POST /api/key/{key}` (allowlisted), `GET/PUT /api/volume`. `HealthController` does `GET /api/health` (200 UP / 503 DOWN). 9 `@WebMvcTest` + 10 service/registry unit tests green; live curl against speaker confirmed `POST /api/play/vltava` plays. `Phase2SmokeRunner` deleted. One new gotcha (`@WebMvcTest(controllers=)` doesn't register beans in Boot 4). |
 | 4 — PWA frontend | ⏳ | — | |
 | 5 — WebSocket listener | ⏳ | — | |
 | 6 — Physical buttons | ⏳ | — | |
@@ -49,3 +49,27 @@ Exit-criterion verification:
 - `./gradlew build` — green (10 unit tests pass).
 - `SOUNDTOUCH_LIVE=true ./gradlew test --tests '*LiveTest'` — green against `10.0.0.148`.
 - `./gradlew bootRun --args='--spring.profiles.active=phase2-smoke'` — wakes speaker if STANDBY, selects Vltava, confirms `/now_playing.source == LOCAL_INTERNET_RADIO`. Verified via SSH `curl /now_playing` from `piserver`.
+
+## Phase 3 detail
+
+Added:
+- `cz.poposkoc.radio.stations.Station` (record), `StationRegistry`, `StationService`, `StationNotFoundException`.
+- `cz.poposkoc.radio.config.StationsProperties` bound to `radio.stations` in `application.yml`.
+- `cz.poposkoc.radio.web.RadioController`, `HealthController`, `RadioExceptionHandler`.
+- View DTOs: `StationView`, `VolumeView`, `VolumeRequest`, `HealthView`.
+- Tests: `StationRegistryTest` (6), `StationServiceTest` (4), `RadioControllerTest` (9).
+
+Deleted: `Phase2SmokeRunner` — `StationService` now owns the wake-and-select path.
+
+Plan deviations:
+- **Stations live in `application.yml`** rather than a separate `stations.yaml`. Reason: simplicity for Phase 3 — one file, no `YamlPropertySourceFactory`. Will be split to external `config/stations.yaml` in Phase 8 so it can be edited outside the JAR.
+- **Initial stations: only Vltava + Radio Wave** rather than the plan's 7. Reason: don't seed URLs we haven't verified; we'll grow the list in Phase 4 prep (with `curl -I` checks per the plan's own gotcha about URL rot).
+- **Property prefix `radio.stations`** rather than `stations`. Reason: avoid future-conflict with the `stations:` top-level key the plan mentions, and group app-level config under a project namespace.
+
+Exit-criterion verification (curl from same LAN as speaker, Mac at 10.0.0.213 → speaker at 10.0.0.148):
+- `curl -X POST http://localhost:8080/api/play/vltava` → 204, speaker `now_playing.source = LOCAL_INTERNET_RADIO` with Vltava ContentItem, audible. ✅
+- `curl http://localhost:8080/api/health` → 200 UP, device name correctly UTF-8 encoded through JSON.
+- `curl -X PUT … /api/volume {"volume":25}` → 204, follow-up GET shows 25 (round-trip on real speaker).
+- `curl -X POST /api/play/nope` → 404 with JSON error envelope.
+- `curl -X POST /api/key/DROP_TABLES` → 400 (allowlist works).
+- `curl -X POST /api/key/pause` → 204 (case-insensitive).
