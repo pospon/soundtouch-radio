@@ -1,0 +1,11 @@
+.git/
+.gradle/
+build/
+docs/
+*.iml
+.idea/
+.vscode/
+.DS_Store
+HELP.md
+PLAN.md
+deploy/

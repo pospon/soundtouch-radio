@@ -1,0 +1,35 @@
+# Add this block to /opt/homeserver/docker-compose.yml under `services:`.
+# Mirrors the tuya-horakova / timetable pattern: image from GHCR, Watchtower
+# auto-updates, Traefik routes via the lan-only middleware so the API is not
+# exposed to the internet (the speaker control surface has no auth).
+#
+# Required entries in /opt/homeserver/.env:
+#   SOUNDTOUCH_HOST=10.0.0.148   # static-DHCP IP of the SoundTouch 30
+#
+# Required host setup (Pi):
+#   - I²C enabled:           sudo raspi-config nonint do_i2c 0
+#   - User in i2c + gpio groups (typically already the case on Raspberry Pi OS)
+#   - /dev/i2c-1 and /dev/gpiochip0 present (default on Pi 4 / Pi 5 with Bookworm)
+
+  soundtouch-radio:
+    image: ghcr.io/${GHCR_USER}/soundtouch-radio:latest
+    container_name: soundtouch-radio
+    restart: unless-stopped
+    environment:
+      - SPRING_PROFILES_ACTIVE=pi
+      - SOUNDTOUCH_HOST=${SOUNDTOUCH_HOST}
+      - TZ=Europe/Prague
+    devices:
+      - /dev/gpiochip0:/dev/gpiochip0
+      - /dev/i2c-1:/dev/i2c-1
+    group_add:
+      - "gpio"
+      - "i2c"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.soundtouch.rule=Host(`radio.${DOMAIN}`)"
+      - "traefik.http.routers.soundtouch.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.soundtouch.middlewares=lan-only"
+      - "traefik.http.services.soundtouch.loadbalancer.server.port=8080"
+    networks:
+      - web
