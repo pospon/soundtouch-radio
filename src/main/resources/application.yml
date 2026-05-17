@@ -46,3 +46,9 @@ radio:
         action:
           type: key
           key: VOLUME_DOWN
+  display:
+    enabled: false
+    i2c-controller: 1
+    i2c-address: 60     # 0x3C
+    height: TALL        # SHORT=32, TALL=64, LARGE=128
+    idle-blank-after: 5m

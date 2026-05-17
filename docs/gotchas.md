@@ -4,6 +4,14 @@ Things that surprised us. New entries go on top. Each entry: what happened, why,
 
 ---
 
+## 2026-05-17 · Spring's `@DefaultValue` is parsed as decimal even for hex-looking strings
+
+Set `@DefaultValue("0x3C")` on an `int` field expecting Spring to honour Java's hex literal convention. It did not — bind failed with a `NumberFormatException` because the binder runs `Integer.parseInt(...)` (radix 10). Switched to `@DefaultValue("60")` with a YAML comment `# 0x3C` for readers. Same applies to YAML values: write `i2c-address: 60` (or `i2c-address: 0x3C` if you really need it, since SnakeYAML *does* honour hex). Don't trust them to match.
+
+**How to apply:** for I²C addresses, GPIO numbers, etc., use decimal in property defaults and add a comment with the hex form where it matters.
+
+---
+
 ## 2026-05-17 · Spring `@ConfigurationProperties` binder does not support `@JsonSubTypes`
 
 I modelled `ButtonAction` as a sealed interface (`PlayStation`, `Key`) with Jackson's `@JsonTypeInfo(use=NAME, property="type")` + `@JsonSubTypes(...)` annotations and expected `application.yml` binding (`action.type: play_station`, `action.station: vltava`) to work. It bound the outer `ButtonBinding` but left the inner `action` field null/empty. Spring's properties binder is **not** Jackson — it doesn't read `@JsonSubTypes`. The polymorphic-by-property-discriminator pattern from REST/JSON DTOs doesn't translate.

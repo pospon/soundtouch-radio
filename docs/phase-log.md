@@ -10,7 +10,7 @@ One row per phase. Status, when it cleared exit criteria, and notable deviations
 | 4 — PWA frontend | ✅ done (partial exit-criterion until Phase 5) | 2026-05-17 | `PlayerState` (`AtomicReference<PlayerStateSnapshot>` + `ApplicationEventPublisher`). New endpoints: `GET /api/now-playing`, `GET /api/events` (SSE with 25-s heartbeat). PWA at `/`: vanilla JS single page, station tiles, transport, volume readout, refresh, dark theme, `manifest.json` + 192/512 icons (sips-rendered from `static/icon.svg`). Live smoke: SSE pushes verified end-to-end via curl (initial-state-on-connect + push-on-change). **Speaker-remote / AirPlay-originated changes won't appear in the PWA until Phase 5 wires the WS listener** — `PlayerState` has no third writer yet. New gotcha: SIGTERM doesn't gracefully stop the app with active SSE + `@EnableScheduling`; needs `kill -9` locally. |
 | 5 — WebSocket listener | ✅ done (cold-start reconnect verified; mid-session reconnect untested) | 2026-05-17 | `SoundTouchEventListener` opens `ws://10.0.0.148:8080/` with subprotocol `gabbo` on `ApplicationReadyEvent`. `UpdatesDispatcher` parses `<updates>` frames (`volumeUpdated`, `nowSelectionUpdated`) into `PlayerState` writes. On connect, resyncs by calling REST `/volume` + `/now_playing`. `@PreDestroy` closes WS and SSE emitters. Live verified: external `POST /volume` to speaker propagates through WS → dispatcher → PlayerState → SSE in <1s. 4 new gotchas (`Map.copyOf` order bug, `errorUpdate 4505` false alarm, `nowSelectionUpdated` vs `nowPlayingUpdated`, captured WS fixtures). 7 new dispatcher tests + 2 new PlayerState tests; 44 unit tests pass. |
 | 6 — Physical buttons | ✅ done (software only — hardware press untested) | 2026-05-17 | `diozero-core:1.4.1`. `ButtonsProperties` under `radio.buttons` with `enabled` + `debounce` + `bindings[{ gpio, action { type, station\|key } }]`. `ButtonHandler` `@PostConstruct` builds a `com.diozero.devices.Button` per binding (PULL_UP, activeHigh=false, FALLING edge) and wires `whenPressed → dispatch(binding)`. Dispatch switches on `action.type` to `StationService.play` or `SoundTouchClient.pressKey`. Each binding attempt is wrapped in try/catch — a missing chip on Mac logs WARN per binding and the app continues. `@PreDestroy` closes all buttons. 6 new unit tests (4 dispatch + 2 binding). Plan deviation: `ButtonAction` is a flat record (`type/station/key`) instead of a sealed interface — Spring's `@ConfigurationProperties` binder doesn't support `@JsonSubTypes`. **Hardware not wired yet** — exit criterion ("pressing button 1 plays Vltava") will be verified after wiring on the Pi. |
-| 7 — OLED display | ⏳ | — | |
+| 7 — OLED display | ✅ done (software only — physical display untested) | 2026-05-17 | `DisplayProperties` under `radio.display` (`enabled`, `i2cController`, `i2cAddress`, `height`, `idleBlankAfter`). `DisplayRenderer` is a pure `PlayerStateSnapshot → BufferedImage` (128×64, `TYPE_BYTE_BINARY`, no AA, two lines: station name + `Vol XX`/`Vol MUTE`/`Vol --`, station name ellipsized to fit). `OledDisplay` `@Component` builds the diozero `SSD1306` over I²C, listens to `PlayerStateChanged`, and re-arms a 5-min idle-blank timer on each render. `@PreDestroy` clears the display and closes the bus. On Mac (no I²C) it logs a WARN and stays inactive — REST/SSE keep working. 6 renderer tests; sample render confirmed visually. **Hardware not wired yet** — exit criterion ("display shows current station") will be verified after wiring on the Pi. Plan deviation: minimal layout (no track-title row, no Wi-Fi icon) since the speaker doesn't report track metadata for `LOCAL_INTERNET_RADIO` and the empty row would just be noise. |
 | 8 — Packaging & deployment | ⏳ | — | Will use the auto-sync-from-GitHub pattern from `pospon/tuya-horakova` rather than the systemd recipe in `PLAN.md` §8 (TBD when we get there). |
 
 ## Phase 1 detail
@@ -149,3 +149,26 @@ Mac smoke verification:
 Open follow-ups:
 - Hardware: solder/breadboard at least one button to GPIO 17 → GND on the Pi. Then deploy and verify the plan's exit criterion live.
 - Re-evaluate `debounce` wiring once we see real bouncing on hardware.
+
+## Phase 7 detail
+
+Added:
+- `cz.poposkoc.radio.config.DisplayProperties` bound to `radio.display` (`enabled=false`, `i2cController=1`, `i2cAddress=60` (0x3C), `height=TALL`, `idleBlankAfter=5m`).
+- `cz.poposkoc.radio.display.DisplayRenderer` — pure `PlayerStateSnapshot → BufferedImage(TYPE_BYTE_BINARY)`. Sans-serif bold 14pt for the station-name row, plain 12pt for the volume row. Ellipsizes long names to fit the 128 px width. Anti-aliasing off (rasterising for monochrome OLED).
+- `cz.poposkoc.radio.display.OledDisplay` — `@Component`. `@PostConstruct` opens `I2CDevice` via `I2CDevice.builder(...).setController(...).build()`, wraps it in `SsdOledCommunicationChannel.I2cCommunicationChannel`, constructs `SSD1306(channel, height)`. `@EventListener` on `PlayerStateChanged` renders + pushes to the display and re-arms a daemon `ScheduledExecutorService` to blank after `idleBlankAfter`. `@PreDestroy` clears, turns the display off, closes the bus. Init failure logs a WARN and leaves `device=null`, which short-circuits all later operations — app stays fully usable on Mac.
+- 6 renderer tests asserting image dimensions, lit-pixel bands, ellipsis safety, mute path.
+- `application.yml` got a `radio.display` block with sensible Pi defaults (still `enabled=false` until we wire hardware).
+
+Plan deviations:
+- **Minimal two-line layout** instead of plan's four lines. Speaker doesn't report a track title for `LOCAL_INTERNET_RADIO`, and the plan's "WiFi" indicator would just always be "WiFi" once the app starts (uninformative). Less is more on a 128×64.
+- **5-min blank** uses a daemon `ScheduledExecutorService` (separate from Spring's `@Scheduled`) to avoid coupling to the existing SSE heartbeat schedule. `@PreDestroy` shuts it down with `shutdownNow()`.
+- **`setDisplayOn` is deprecated in diozero 1.4.1**; using `setDisplay(boolean)` instead.
+
+Mac smoke verification:
+- Default boot (`enabled=false`): single INFO line `Display disabled (...); skipping OLED init`. App fully functional. ✅
+- Force `RADIO_DISPLAY_ENABLED=true` env: WARN `Failed to initialise OLED on I²C controller=1 address=0x3c: ... — display will be inactive`. REST/SSE keep working — 200 on `/api/stations` and `/api/now-playing`. ✅
+- Visual sanity: rendered `ČRo Vltava` / `Vol 28` via standalone main; PNG sent to user for confirmation.
+
+Open follow-ups:
+- Hardware: wire OLED to SDA/SCL/3V3/GND, `sudo raspi-config nonint do_i2c 0`, verify `i2cdetect -y 1` shows 0x3C, deploy and confirm display lights up.
+- If we ever populate `playState` from non-radio sources (AIRPLAY/BT in Phase n+1), add a track-title row.
