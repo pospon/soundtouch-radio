@@ -4,6 +4,7 @@ import cz.poposkoc.radio.config.StationsProperties;
 import cz.poposkoc.radio.soundtouch.SoundTouchClient;
 import cz.poposkoc.radio.soundtouch.dto.ContentItem;
 import cz.poposkoc.radio.soundtouch.dto.NowPlaying;
+import cz.poposkoc.radio.state.PlayerState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -31,7 +32,7 @@ class StationServiceTest {
                 new Station("vltava", "Vltava", "http://example.test/vltava", null, 1),
                 new Station("fip", "FIP", null, "s15200", 2)
         )));
-        service = new StationService(registry, client);
+        service = new StationService(registry, client, mock(PlayerState.class));
     }
 
     @Test

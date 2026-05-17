@@ -3,6 +3,8 @@ package cz.poposkoc.radio.web;
 import cz.poposkoc.radio.soundtouch.SoundTouchClient;
 import cz.poposkoc.radio.soundtouch.SupportedKeys;
 import cz.poposkoc.radio.soundtouch.dto.VolumeStatus;
+import cz.poposkoc.radio.state.PlayerState;
+import cz.poposkoc.radio.state.PlayerStateSnapshot;
 import cz.poposkoc.radio.stations.StationRegistry;
 import cz.poposkoc.radio.stations.StationService;
 import cz.poposkoc.radio.web.dto.StationView;
@@ -29,16 +31,23 @@ class RadioController {
     private final StationRegistry registry;
     private final StationService stationService;
     private final SoundTouchClient client;
+    private final PlayerState playerState;
 
-    RadioController(StationRegistry registry, StationService stationService, SoundTouchClient client) {
+    RadioController(StationRegistry registry, StationService stationService, SoundTouchClient client, PlayerState playerState) {
         this.registry = registry;
         this.stationService = stationService;
         this.client = client;
+        this.playerState = playerState;
     }
 
     @GetMapping("/stations")
     List<StationView> stations() {
         return registry.all().stream().map(StationView::from).toList();
+    }
+
+    @GetMapping("/now-playing")
+    PlayerStateSnapshot nowPlaying() {
+        return playerState.snapshot();
     }
 
     @PostMapping("/play/{stationId}")
@@ -60,12 +69,14 @@ class RadioController {
     @GetMapping("/volume")
     VolumeView getVolume() {
         VolumeStatus status = client.volume();
+        playerState.volumeChanged(status.actualVolume(), status.muteEnabled());
         return new VolumeView(status.actualVolume(), status.muteEnabled());
     }
 
     @PutMapping("/volume")
     ResponseEntity<Void> setVolume(@RequestBody VolumeRequest request) {
-        client.setVolume(request.volume());
+        int applied = client.setVolume(request.volume());
+        playerState.volumeChanged(applied, false);
         return ResponseEntity.noContent().build();
     }
 }

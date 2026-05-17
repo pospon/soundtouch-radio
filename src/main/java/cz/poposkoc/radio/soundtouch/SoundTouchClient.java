@@ -53,9 +53,10 @@ public class SoundTouchClient {
         postXml("/select", item);
     }
 
-    public void setVolume(int level) {
+    public int setVolume(int level) {
         int clamped = Math.clamp(level, MIN_VOLUME, MAX_VOLUME);
         postXml("/volume", new VolumeCommand(clamped));
+        return clamped;
     }
 
     public void pressKey(String key) {

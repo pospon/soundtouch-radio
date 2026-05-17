@@ -4,6 +4,16 @@ Things that surprised us. New entries go on top. Each entry: what happened, why,
 
 ---
 
+## 2026-05-17 · App with open SSE emitters + `@EnableScheduling` won't shut down on SIGTERM
+
+`pkill -f cz.poposkoc.radio.RadioApplication` and even an explicit `kill <pid>` failed to stop the running app during Phase-4 smoke; only `kill -9` worked. With an active `SseEmitter` registered through `CopyOnWriteArrayList` and the `@Scheduled` 25-s heartbeat task, the JVM has non-daemon threads blocked in I/O or scheduler loops that don't honor Spring's normal shutdown signal.
+
+**Workaround for local dev:** `kill -9` it. **For production:** systemd's `Restart=on-failure` will catch the worst case (Phase 8 plan). Long-term, we should: (a) close all `SseEmitter`s in a `@PreDestroy`, and (b) make sure the heartbeat scheduler is a `ThreadPoolTaskScheduler` with `setWaitForTasksToCompleteOnShutdown(false)`. Defer until Phase 5 makes the surface area bigger.
+
+**Why:** Spring's default `TaskScheduler` for `@Scheduled` is a single-threaded scheduler; combined with an SSE emitter pool, graceful shutdown is fragile.
+
+---
+
 ## 2026-05-17 · Boot 4 `@WebMvcTest(controllers = ...)` does not actually register the listed controllers
 
 `@WebMvcTest(controllers = {RadioController.class, HealthController.class})` ran the test context, but every request returned 404 with `Handler = ResourceHttpRequestHandler`. The controller beans were not in the context — they fell through to the static-resource handler. Worked once we switched to `@WebMvcTest` (no `controllers =`) plus explicit `@Import({RadioController.class, HealthController.class, RadioExceptionHandler.class, ...})`.

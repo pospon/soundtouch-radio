@@ -53,6 +53,36 @@ Sets volume. Body is JSON `{"volume": int}`. Values outside 0..100 are clamped c
 
 - `204 No Content` on success.
 
+### `GET /now-playing`
+
+Returns the app's current `PlayerState` snapshot.
+
+```json
+{
+  "source": "LOCAL_INTERNET_RADIO",
+  "stationId": "vltava",
+  "stationName": "ČRo Vltava",
+  "volume": 25,
+  "muted": false,
+  "playState": "PLAY_STATE"
+}
+```
+
+Any field may be `null` if not yet known. Until Phase 5 wires the WS listener, this reflects only state changes triggered through this API.
+
+### `GET /events`
+
+Server-Sent Events stream. The client receives a `state` event whenever `PlayerState` changes; the body is the same JSON shape as `/now-playing`. A `state` event is emitted immediately on subscribe so a freshly reconnecting client gets the current snapshot without polling. Heartbeat comments (`:hb`) fire every 25 seconds to keep proxies happy.
+
+```
+event:state
+data:{"source":"LOCAL_INTERNET_RADIO","stationId":"vltava","stationName":"ČRo Vltava","volume":25,"muted":false,"playState":"PLAY_STATE"}
+
+:hb
+```
+
+Use from JS via `new EventSource('/api/events')`.
+
 ### `GET /health`
 
 Probes the speaker via `GET /info`.

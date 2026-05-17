@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#101418" />
+    <title>SoundTouch</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<main>
+    <header>
+        <h1 id="now-playing">—</h1>
+        <p id="now-playing-sub" class="muted"></p>
+    </header>
+
+    <section id="stations" aria-label="Stations" class="grid"></section>
+
+    <section class="transport">
+        <button data-key="PREV_TRACK" aria-label="Previous">⏮</button>
+        <button data-key="PLAY_PAUSE" aria-label="Play / Pause" class="primary">⏯</button>
+        <button data-key="NEXT_TRACK" aria-label="Next">⏭</button>
+    </section>
+
+    <section class="volume">
+        <button data-key="VOLUME_DOWN" aria-label="Volume down">−</button>
+        <output id="volume-readout">··</output>
+        <button data-key="VOLUME_UP" aria-label="Volume up">+</button>
+        <button data-key="MUTE" aria-label="Mute" class="mute">🔇</button>
+    </section>
+
+    <footer>
+        <button id="refresh">Refresh</button>
+        <span id="conn-dot" class="dot" title="connection status"></span>
+    </footer>
+</main>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

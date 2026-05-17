@@ -2,6 +2,7 @@ package cz.poposkoc.radio.stations;
 
 import cz.poposkoc.radio.soundtouch.SoundTouchClient;
 import cz.poposkoc.radio.soundtouch.dto.ContentItem;
+import cz.poposkoc.radio.state.PlayerState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,10 +16,12 @@ public class StationService {
 
     private final StationRegistry registry;
     private final SoundTouchClient client;
+    private final PlayerState playerState;
 
-    public StationService(StationRegistry registry, SoundTouchClient client) {
+    public StationService(StationRegistry registry, SoundTouchClient client, PlayerState playerState) {
         this.registry = registry;
         this.client = client;
+        this.playerState = playerState;
     }
 
     public Station play(String stationId) {
@@ -27,6 +30,7 @@ public class StationService {
 
         wakeIfStandby();
         client.select(toContentItem(station));
+        playerState.stationPlaying(station);
         log.info("Playing station {} ({})", station.id(), station.name());
         return station;
     }

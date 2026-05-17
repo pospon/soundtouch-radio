@@ -7,7 +7,7 @@ One row per phase. Status, when it cleared exit criteria, and notable deviations
 | 1 — Smoke test | ✅ done (1 open follow-up) | 2026-05-17 | Speaker found at `10.0.0.148`. `INTERNET_RADIO` source rejected (1005) — using `LOCAL_INTERNET_RADIO` instead. PAUSE/PLAY verified. **Open:** DHCP reservation on router. |
 | 2 — Spring Boot skeleton + `SoundTouchClient` | ✅ done | 2026-05-17 | Java (not Kotlin as plan), Boot 4.0.6, Spring 7, JDK 21 toolchain, Jackson 3 (`tools.jackson.*`). `SoundTouchClient` with `info / sources / nowPlaying / volume / select / setVolume / pressKey`. 10 MockWebServer tests + 2 live tests (gated via `SOUNDTOUCH_LIVE=true`) green. Smoke runner profile `phase2-smoke` selected Vltava end-to-end. Three new gotchas captured. |
 | 3 — `StationRegistry` + REST API | ✅ done | 2026-05-17 | Station configured in `application.yml` under `radio.stations` (separated to own file in Phase 8). `StationRegistry` validates ids/sources/buttons at startup. `StationService.play(id)` wakes on STANDBY then selects. `RadioController` exposes `GET /api/stations`, `POST /api/play/{id}`, `POST /api/key/{key}` (allowlisted), `GET/PUT /api/volume`. `HealthController` does `GET /api/health` (200 UP / 503 DOWN). 9 `@WebMvcTest` + 10 service/registry unit tests green; live curl against speaker confirmed `POST /api/play/vltava` plays. `Phase2SmokeRunner` deleted. One new gotcha (`@WebMvcTest(controllers=)` doesn't register beans in Boot 4). |
-| 4 — PWA frontend | ⏳ | — | |
+| 4 — PWA frontend | ✅ done (partial exit-criterion until Phase 5) | 2026-05-17 | `PlayerState` (`AtomicReference<PlayerStateSnapshot>` + `ApplicationEventPublisher`). New endpoints: `GET /api/now-playing`, `GET /api/events` (SSE with 25-s heartbeat). PWA at `/`: vanilla JS single page, station tiles, transport, volume readout, refresh, dark theme, `manifest.json` + 192/512 icons (sips-rendered from `static/icon.svg`). Live smoke: SSE pushes verified end-to-end via curl (initial-state-on-connect + push-on-change). **Speaker-remote / AirPlay-originated changes won't appear in the PWA until Phase 5 wires the WS listener** — `PlayerState` has no third writer yet. New gotcha: SIGTERM doesn't gracefully stop the app with active SSE + `@EnableScheduling`; needs `kill -9` locally. |
 | 5 — WebSocket listener | ⏳ | — | |
 | 6 — Physical buttons | ⏳ | — | |
 | 7 — OLED display | ⏳ | — | |
@@ -73,3 +73,29 @@ Exit-criterion verification (curl from same LAN as speaker, Mac at 10.0.0.213 �
 - `curl -X POST /api/play/nope` → 404 with JSON error envelope.
 - `curl -X POST /api/key/DROP_TABLES` → 400 (allowlist works).
 - `curl -X POST /api/key/pause` → 204 (case-insensitive).
+
+## Phase 4 detail
+
+Added:
+- `cz.poposkoc.radio.state.PlayerState` (`@Component` over an `AtomicReference<PlayerStateSnapshot>`), publishes `PlayerStateChanged` via `ApplicationEventPublisher` on every mutation.
+- `cz.poposkoc.radio.state.PlayerStateSnapshot` (immutable record, all-nullable fields), `PlayerStateChanged` (event payload).
+- `EventsController` — `GET /api/events` SseEmitter stream; `@EventListener` fan-out; `@Scheduled(fixedRate = 25_000)` heartbeat (`:hb` comment) to keep proxies from idle-killing the connection.
+- `RadioController.nowPlaying` — `GET /api/now-playing` returning the snapshot. `setVolume` also pushes the applied volume into `PlayerState` (and `SoundTouchClient.setVolume` now returns the clamped value).
+- `StationService` writes to `PlayerState` on every successful select.
+- `@EnableScheduling` on `RadioApplication`.
+- PWA at `src/main/resources/static/`: `index.html`, `style.css`, `app.js` (ES module, vanilla, EventSource for state, fetch for actions), `manifest.json`, `icon-192.png`, `icon-512.png` (rendered from `icon.svg` via `sips`).
+- Tests: `PlayerStateTest` (3), `RadioControllerTest` got 1 new `now-playing` case (total 10). All 33 unit tests pass.
+
+Plan deviations:
+- **Exit criterion is only partially met until Phase 5.** Plan says: "Volume slider updates live when someone hits the volume button on the speaker remote." That needs the WS listener to push external state into `PlayerState`; this phase only handles PWA-originated changes. Documented up-front via the AskUserQuestion at the start of Phase 4.
+- **No `playState`/`UNKNOWN` enum.** `PlayerStateSnapshot.playState` is just a nullable `String`. Per Phase 2 finding, `LOCAL_INTERNET_RADIO` doesn't report it anyway; we'll model it properly when Phase 5 sees real values.
+- **PWA polling minimised:** the only "polling" is `app.js` calling `/api/volume` after a volume key press, because that path mutates the speaker but `PlayerState` doesn't yet know the new value (no WS subscriber).
+
+Exit-criterion verification:
+- `curl /` → 200 HTML, `/style.css /app.js /manifest.json /icon-192.png` all 200.
+- `curl /api/now-playing` → empty snapshot on cold start.
+- `curl -X POST /api/play/vltava` → 204; subsequent `/api/now-playing` shows `stationId=vltava`, `source=LOCAL_INTERNET_RADIO`; speaker confirms.
+- SSE push test: subscriber connected before `play` got the initial snapshot, then a second `state` event after the action, then `:hb` after 25 s.
+
+Open follow-ups:
+- Live in-browser smoke (tapping a tile on a phone) — user-driven. Backend was verified via curl SSE round-trip and against the real speaker.

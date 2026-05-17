@@ -4,6 +4,7 @@ import cz.poposkoc.radio.config.StationsProperties;
 import cz.poposkoc.radio.soundtouch.SoundTouchClient;
 import cz.poposkoc.radio.soundtouch.SoundTouchException;
 import cz.poposkoc.radio.soundtouch.dto.VolumeStatus;
+import cz.poposkoc.radio.state.PlayerState;
 import cz.poposkoc.radio.stations.Station;
 import cz.poposkoc.radio.stations.StationNotFoundException;
 import cz.poposkoc.radio.stations.StationRegistry;
@@ -47,6 +48,7 @@ class RadioControllerTest {
 
     @MockitoBean StationService stationService;
     @MockitoBean SoundTouchClient client;
+    @MockitoBean PlayerState playerState;
 
     @Test
     void listsStationsWithButtonField() throws Exception {
@@ -102,11 +104,13 @@ class RadioControllerTest {
 
     @Test
     void putVolumePassesValueThrough() throws Exception {
+        when(client.setVolume(30)).thenReturn(30);
         mvc.perform(put("/api/volume")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new VolumeRequest(30))))
                 .andExpect(status().isNoContent());
         verify(client).setVolume(30);
+        verify(playerState).volumeChanged(30, false);
     }
 
     @Test
@@ -128,6 +132,21 @@ class RadioControllerTest {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.status").value("DOWN"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("oobýval"))));
+    }
+
+    @Test
+    void nowPlayingReturnsCurrentSnapshot() throws Exception {
+        var snap = new cz.poposkoc.radio.state.PlayerStateSnapshot(
+                "LOCAL_INTERNET_RADIO", "vltava", "ČRo Vltava", 30, false, "PLAY_STATE");
+        when(playerState.snapshot()).thenReturn(snap);
+
+        mvc.perform(get("/api/now-playing"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stationId").value("vltava"))
+                .andExpect(jsonPath("$.stationName").value("ČRo Vltava"))
+                .andExpect(jsonPath("$.source").value("LOCAL_INTERNET_RADIO"))
+                .andExpect(jsonPath("$.volume").value(30))
+                .andExpect(jsonPath("$.muted").value(false));
     }
 
     @Configuration
