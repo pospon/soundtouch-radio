@@ -2,6 +2,7 @@ package cz.poposkoc.radio.web;
 
 import cz.poposkoc.radio.state.PlayerState;
 import cz.poposkoc.radio.state.PlayerStateChanged;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -44,6 +45,18 @@ class EventsController {
         for (SseEmitter emitter : emitters) {
             sendOrDrop(emitter, "state", event.snapshot());
         }
+    }
+
+    @PreDestroy
+    void closeAllOnShutdown() {
+        for (SseEmitter emitter : emitters) {
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {
+                // emitter already in a closed state — fine
+            }
+        }
+        emitters.clear();
     }
 
     @Scheduled(fixedRate = 25_000)

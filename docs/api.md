@@ -91,6 +91,32 @@ For `LOCAL_INTERNET_RADIO` we see only:
 
 When nothing has ever been selected, `source="INVALID_SOURCE"` and the ContentItem is mostly empty. When the speaker is asleep, `source="STANDBY"` and the ContentItem is `<ContentItem source="STANDBY" isPresetable="false" />`.
 
-## WebSocket `:8080` (Phase 5 — not yet exercised)
+## WebSocket `:8080`
 
-To document once Phase 5 verifies it. Spec: connect with subprotocol `gabbo`, server pushes `<updates>` frames.
+Connect with subprotocol `gabbo` (`Sec-WebSocket-Protocol: gabbo`). No keepalive required from the client. Verified against firmware 27.0.3 on our device.
+
+On connect, the speaker sends a greeting frame:
+```xml
+<SoundTouchSdkInfo serverVersion="4" serverBuild="trunk r46298 v4 epdbuild hepdswbld04" />
+```
+
+Subsequent frames have known shapes:
+
+- **`<updates>` envelope** — the main change feed. Wraps a single inner element. Observed inners:
+
+  - `<volumeUpdated><volume><targetvolume>26</targetvolume><actualvolume>26</actualvolume><muteenabled>false</muteenabled></volume></volumeUpdated>`
+  - `<nowSelectionUpdated><preset id="0"><ContentItem ... /></preset></nowSelectionUpdated>` — fires when the source/station changes. Note: **`nowSelectionUpdated`**, not `nowPlayingUpdated`, on this firmware.
+
+- **`<userActivityUpdate deviceID="..." />`** — fired on most user-visible actions. Carries no useful payload; ignored by the dispatcher.
+
+- **`<errorUpdate>`** — recoverable error notifications. Example:
+  ```xml
+  <errorUpdate deviceID="..."><error value="4505" name="BMX_UNKNOWN_PLAYBACK_CONTENT" severity="Recoverable">Unsupported content item<customError>...</customError></error></errorUpdate>
+  ```
+  Often fires alongside `nowSelectionUpdated` even when the content actually plays. See `gotchas.md`.
+
+Frames the plan mentioned but we have NOT observed yet on this firmware:
+- `<sourceUpdated>` — may only fire on source-enum transitions (e.g. INTERNET_RADIO → AIRPLAY), not within-source moves.
+- `<nowPlayingUpdated>` — likely the form for non-radio sources (AIRPLAY, BT). Will rediscover when we test those.
+
+Captured samples live at `src/test/resources/cz/poposkoc/radio/soundtouch/fixtures/ws/*.xml`.

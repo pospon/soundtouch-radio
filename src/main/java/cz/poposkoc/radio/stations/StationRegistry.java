@@ -19,7 +19,7 @@ public class StationRegistry {
 
     public StationRegistry(StationsProperties props) {
         List<Station> stations = props.stations() == null ? List.of() : props.stations();
-        this.byId = validate(stations);
+        this.byId = java.util.Collections.unmodifiableMap(validate(stations));
     }
 
     public Optional<Station> findById(String id) {
@@ -55,7 +55,7 @@ public class StationRegistry {
                 }
             }
         }
-        return Map.copyOf(result);
+        return result;
     }
 
     private static void requireNonBlank(String field, String value) {

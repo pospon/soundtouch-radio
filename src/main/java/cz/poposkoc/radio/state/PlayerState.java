@@ -1,20 +1,25 @@
 package cz.poposkoc.radio.state;
 
+import cz.poposkoc.radio.soundtouch.dto.ContentItem;
 import cz.poposkoc.radio.stations.Station;
+import cz.poposkoc.radio.stations.StationRegistry;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Component
 public class PlayerState {
 
     private final ApplicationEventPublisher publisher;
+    private final StationRegistry registry;
     private final AtomicReference<PlayerStateSnapshot> snapshot =
             new AtomicReference<>(PlayerStateSnapshot.empty());
 
-    public PlayerState(ApplicationEventPublisher publisher) {
+    public PlayerState(ApplicationEventPublisher publisher, StationRegistry registry) {
         this.publisher = publisher;
+        this.registry = registry;
     }
 
     public PlayerStateSnapshot snapshot() {
@@ -39,6 +44,27 @@ public class PlayerState {
                 volume, muted,
                 prev.playState()
         ));
+    }
+
+    public void contentItemFromSpeaker(ContentItem item) {
+        Optional<Station> matched = matchToStation(item);
+        update(prev -> new PlayerStateSnapshot(
+                item.source(),
+                matched.map(Station::id).orElse(null),
+                matched.map(Station::name).orElseGet(item::itemName),
+                prev.volume(),
+                prev.muted(),
+                "PLAY_STATE"
+        ));
+    }
+
+    private Optional<Station> matchToStation(ContentItem item) {
+        if (item.location() == null || item.location().isBlank()) {
+            return Optional.empty();
+        }
+        return registry.all().stream()
+                .filter(s -> item.location().equals(s.stream()) || item.location().equals(s.tunein()))
+                .findFirst();
     }
 
     private void update(java.util.function.UnaryOperator<PlayerStateSnapshot> mutator) {

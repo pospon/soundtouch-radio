@@ -8,7 +8,7 @@ One row per phase. Status, when it cleared exit criteria, and notable deviations
 | 2 — Spring Boot skeleton + `SoundTouchClient` | ✅ done | 2026-05-17 | Java (not Kotlin as plan), Boot 4.0.6, Spring 7, JDK 21 toolchain, Jackson 3 (`tools.jackson.*`). `SoundTouchClient` with `info / sources / nowPlaying / volume / select / setVolume / pressKey`. 10 MockWebServer tests + 2 live tests (gated via `SOUNDTOUCH_LIVE=true`) green. Smoke runner profile `phase2-smoke` selected Vltava end-to-end. Three new gotchas captured. |
 | 3 — `StationRegistry` + REST API | ✅ done | 2026-05-17 | Station configured in `application.yml` under `radio.stations` (separated to own file in Phase 8). `StationRegistry` validates ids/sources/buttons at startup. `StationService.play(id)` wakes on STANDBY then selects. `RadioController` exposes `GET /api/stations`, `POST /api/play/{id}`, `POST /api/key/{key}` (allowlisted), `GET/PUT /api/volume`. `HealthController` does `GET /api/health` (200 UP / 503 DOWN). 9 `@WebMvcTest` + 10 service/registry unit tests green; live curl against speaker confirmed `POST /api/play/vltava` plays. `Phase2SmokeRunner` deleted. One new gotcha (`@WebMvcTest(controllers=)` doesn't register beans in Boot 4). |
 | 4 — PWA frontend | ✅ done (partial exit-criterion until Phase 5) | 2026-05-17 | `PlayerState` (`AtomicReference<PlayerStateSnapshot>` + `ApplicationEventPublisher`). New endpoints: `GET /api/now-playing`, `GET /api/events` (SSE with 25-s heartbeat). PWA at `/`: vanilla JS single page, station tiles, transport, volume readout, refresh, dark theme, `manifest.json` + 192/512 icons (sips-rendered from `static/icon.svg`). Live smoke: SSE pushes verified end-to-end via curl (initial-state-on-connect + push-on-change). **Speaker-remote / AirPlay-originated changes won't appear in the PWA until Phase 5 wires the WS listener** — `PlayerState` has no third writer yet. New gotcha: SIGTERM doesn't gracefully stop the app with active SSE + `@EnableScheduling`; needs `kill -9` locally. |
-| 5 — WebSocket listener | ⏳ | — | |
+| 5 — WebSocket listener | ✅ done (cold-start reconnect verified; mid-session reconnect untested) | 2026-05-17 | `SoundTouchEventListener` opens `ws://10.0.0.148:8080/` with subprotocol `gabbo` on `ApplicationReadyEvent`. `UpdatesDispatcher` parses `<updates>` frames (`volumeUpdated`, `nowSelectionUpdated`) into `PlayerState` writes. On connect, resyncs by calling REST `/volume` + `/now_playing`. `@PreDestroy` closes WS and SSE emitters. Live verified: external `POST /volume` to speaker propagates through WS → dispatcher → PlayerState → SSE in <1s. 4 new gotchas (`Map.copyOf` order bug, `errorUpdate 4505` false alarm, `nowSelectionUpdated` vs `nowPlayingUpdated`, captured WS fixtures). 7 new dispatcher tests + 2 new PlayerState tests; 44 unit tests pass. |
 | 6 — Physical buttons | ⏳ | — | |
 | 7 — OLED display | ⏳ | — | |
 | 8 — Packaging & deployment | ⏳ | — | Will use the auto-sync-from-GitHub pattern from `pospon/tuya-horakova` rather than the systemd recipe in `PLAN.md` §8 (TBD when we get there). |
@@ -99,3 +99,28 @@ Exit-criterion verification:
 
 Open follow-ups:
 - Live in-browser smoke (tapping a tile on a phone) — user-driven. Backend was verified via curl SSE round-trip and against the real speaker.
+
+## Phase 5 detail
+
+Added:
+- `cz.poposkoc.radio.soundtouch.SoundTouchEventListener` — `@Component` lifecycle bean. Connects to `ws://<host>:<wsPort>/` with `Sec-WebSocket-Protocol: gabbo` on `ApplicationReadyEvent`. Tracks current session + reconnect attempt in `AtomicReference`s. On connect, fires a REST resync via `SoundTouchClient.volume()` + `nowPlaying()` so the snapshot is current. On close/error, schedules a reconnect with backoff `1s → 2s → 5s → 10s` (capped). `@PreDestroy` cancels pending reconnects, closes the session, and shuts down the scheduler.
+- `cz.poposkoc.radio.soundtouch.UpdatesDispatcher` — `@Component`. Parses `<updates>` envelope to `Updates` record, dispatches to the right `PlayerState` writer. Ignores `<SoundTouchSdkInfo>`, `<userActivityUpdate>`, `<errorUpdate>` (the speaker is noisy with `4505 BMX_UNKNOWN_PLAYBACK_CONTENT` even on successful selects).
+- `cz.poposkoc.radio.soundtouch.dto.Updates` — record envelope with nullable inner kinds: `nowSelectionUpdated`, `volumeUpdated`, `nowPlayingUpdated`. Only the non-null one is applied.
+- `PlayerState.contentItemFromSpeaker(ContentItem)` — matches the incoming `ContentItem` back to a configured `Station` by `location` (against either `stream` or `tunein`). Sets `stationId` if matched, falls back to the speaker's `itemName` otherwise.
+- `EventsController.@PreDestroy closeAllOnShutdown()` — companion to the listener's shutdown hook; completes all open SseEmitters.
+- 7 new dispatcher tests (`UpdatesDispatcherTest`) driven by real captured fixtures.
+- 2 new PlayerState tests for the speaker-originated path.
+- Fixtures captured from the live speaker at `src/test/resources/cz/poposkoc/radio/soundtouch/fixtures/ws/`.
+
+Plan deviations / surprises:
+- **`nowSelectionUpdated` instead of `nowPlayingUpdated`** for station changes on this firmware. The dispatcher handles both shapes for future-proofing.
+- **Stations source-list discovery: the plan implied frames have `<sourceUpdated>`. Not observed.** May only fire when the source enum itself changes (e.g. INTERNET_RADIO ↔ AIRPLAY).
+- **Mid-session reconnect not live-tested**: I can't programmatically power-cycle the speaker. The reconnect logic is fully exercised on every cold start (which we observed) and the backoff/scheduler logic is straightforward. Will harden in Phase 8 once the app is running 24/7 on the Pi.
+
+Exit-criterion verification:
+- App boots → WS connects within ~30 ms → resync runs → `/api/now-playing` reflects the live speaker state (incl. previous-session leftover Radio Wave + volume 27 from the speaker's actual current values). ✅
+- SSE subscriber connected → external `POST /volume <volume>33</volume>` sent directly to speaker (bypassing our app) → SSE pushed `volume:33` event in well under 1 s. ✅ This proves the speaker-remote scenario from the PWA's perspective.
+
+Open follow-ups:
+- Mid-session reconnect after speaker power-cycle. Will fall out of Phase 8 testing.
+- `bootRun` SIGTERM still hangs (gradle fork swallows the signal); systemd in Phase 8 will fix it.

@@ -4,13 +4,43 @@ Things that surprised us. New entries go on top. Each entry: what happened, why,
 
 ---
 
+## 2026-05-17 · `Map.copyOf` silently breaks `LinkedHashMap` insertion order
+
+`StationRegistry` built a `LinkedHashMap` to preserve config order, then returned `Map.copyOf(result)`. The copy is unmodifiable but **its iteration order is not guaranteed** — JDK can reshuffle for security/hashing reasons. We hit this when the controller test asserted vltava-first and got fip-first instead. Fixed by returning `Collections.unmodifiableMap(result)` (which is a view that preserves the underlying order).
+
+**Why:** `Map.copyOf`'s contract says nothing about iteration order. The fact that small maps *sometimes* preserve order is a happy accident. Don't rely on it.
+
+**How to apply:** when order matters (config files, UI display lists, anything user-visible), use `Collections.unmodifiableMap(linkedHashMap)` or `List.copyOf` of an explicitly-ordered collection. Don't reach for `Map.copyOf` unless you've thought through it.
+
+---
+
+## 2026-05-17 · Speaker emits `errorUpdate value="4505" BMX_UNKNOWN_PLAYBACK_CONTENT` even when the stream plays fine
+
+After `POST /select` with a valid Icecast URL, the speaker emits an `<errorUpdate severity="Recoverable">Unsupported content item</errorUpdate>` over WS *along with* the successful `<nowSelectionUpdated>`. The stream still plays audibly and `/now_playing` shows the new ContentItem correctly.
+
+**Why:** likely the post-Bose-cloud firmware tries to look the URL up in Bose's (now-dead) content catalog, fails, but falls back to the local raw stream. The error is internal bookkeeping noise from the cloud-lookup attempt, not a real failure.
+
+**How to apply:** `UpdatesDispatcher` ignores `<errorUpdate>` entirely. Don't surface it to the user. If we ever start surfacing speaker errors, filter out `4505 BMX_UNKNOWN_PLAYBACK_CONTENT` specifically.
+
+---
+
+## 2026-05-17 · SoundTouch WS emits `<nowSelectionUpdated>`, not `<nowPlayingUpdated>`, for station changes
+
+`PLAN.md` says the speaker emits `<nowPlayingUpdated>` when the track/station changes. On our firmware 27.0.3, the actual frame is `<nowSelectionUpdated>` wrapping `<preset id="0"><ContentItem .../></preset>`. The plan's `nowPlayingUpdated` may exist for non-radio sources (AIRPLAY, BT) — we haven't seen it yet.
+
+**How to apply:** the `Updates` DTO models both inners so we'll handle either shape when it appears. The dispatcher applies whichever one is non-null.
+
+---
+
 ## 2026-05-17 · App with open SSE emitters + `@EnableScheduling` won't shut down on SIGTERM
 
-`pkill -f cz.poposkoc.radio.RadioApplication` and even an explicit `kill <pid>` failed to stop the running app during Phase-4 smoke; only `kill -9` worked. With an active `SseEmitter` registered through `CopyOnWriteArrayList` and the `@Scheduled` 25-s heartbeat task, the JVM has non-daemon threads blocked in I/O or scheduler loops that don't honor Spring's normal shutdown signal.
+`pkill -f cz.poposkoc.radio.RadioApplication` and even an explicit `kill <pid>` failed to stop the running app; only `kill -9` worked. With an active `SseEmitter` registered through `CopyOnWriteArrayList` and the `@Scheduled` 25-s heartbeat task, the JVM has non-daemon threads blocked in I/O or scheduler loops that don't honor Spring's normal shutdown signal.
 
-**Workaround for local dev:** `kill -9` it. **For production:** systemd's `Restart=on-failure` will catch the worst case (Phase 8 plan). Long-term, we should: (a) close all `SseEmitter`s in a `@PreDestroy`, and (b) make sure the heartbeat scheduler is a `ThreadPoolTaskScheduler` with `setWaitForTasksToCompleteOnShutdown(false)`. Defer until Phase 5 makes the surface area bigger.
+**Phase 5 partial fix:** added `@PreDestroy closeAllOnShutdown()` on `EventsController` to complete all open `SseEmitter`s, and a matching `@PreDestroy stop()` on `SoundTouchEventListener` to close the WS session and shut down the reconnect scheduler. Spring `@SpringBootTest` shutdowns are now clean (confirmed by the `WS closed during shutdown` log line at test teardown). **However** `bootRun` shutdown is still broken: gradle's `bootRun` fork doesn't propagate `SIGTERM` to context-close, so `kill <pid>` still hangs. Use `kill -9` locally; production systemd will handle this properly.
 
-**Why:** Spring's default `TaskScheduler` for `@Scheduled` is a single-threaded scheduler; combined with an SSE emitter pool, graceful shutdown is fragile.
+**Workaround for local dev:** `kill -9` it. **For production (Phase 8):** systemd with `KillMode=process` + `TimeoutStopSec=10s` should make this work without `-9`. Will verify in Phase 8.
+
+**Why:** Spring's default `TaskScheduler` for `@Scheduled` is a single-threaded scheduler with non-daemon threads. Gradle's `bootRun` adds another layer of process forking that swallows signals.
 
 ---
 
