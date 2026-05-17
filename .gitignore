@@ -1,34 +1,44 @@
-# Gradle
-.gradle/
+HELP.md
+.gradle
 build/
-!gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-# IDE — IntelliJ
-.idea/
-*.iml
-*.ipr
-*.iws
-out/
-
-# IDE — Eclipse
+### STS ###
+.apt_generated
 .classpath
 .factorypath
 .project
-.settings/
+.settings
+.springBeans
+.sts4-cache
 bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
 
-# IDE — VS Code
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
 .vscode/
 
-# macOS
+### macOS ###
 .DS_Store
 
-# Logs / local
-*.log
-logs/
-
-# Local config overrides
+### Local config overrides ###
 src/main/resources/application-local.yml
 src/main/resources/application-dev.yml

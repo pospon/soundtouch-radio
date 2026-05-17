@@ -45,7 +45,7 @@ Body is a single `<ContentItem>`. Source-specific shapes:
 </ContentItem>
 ```
 
-Response on success: `<status>/select</status>`. On bad source: `<errors><error value="1005" name="UNKNOWN_SOURCE_ERROR">`.
+Response on success: `<status>/select</status>`. On bad source: `<errors><error value="1005" name="UNKNOWN_SOURCE_ERROR">`. **If the speaker is in STANDBY, `/select` returns `<status>/select</status>` but does nothing** — send `POST /key POWER` (press+release pair) first. See `gotchas.md`.
 
 ## `POST /key`
 
@@ -89,7 +89,7 @@ For `LOCAL_INTERNET_RADIO` we see only:
 
 **No `playStatus`, no track metadata.** Different sources (TUNEIN, AIRPLAY) return richer payloads — we'll document those when we encounter them. Track playback state in app memory; don't rely on the speaker to tell us "playing vs. paused" for direct streams. See [`gotchas.md`](gotchas.md).
 
-When nothing has ever been selected, `source="INVALID_SOURCE"` and the ContentItem is mostly empty.
+When nothing has ever been selected, `source="INVALID_SOURCE"` and the ContentItem is mostly empty. When the speaker is asleep, `source="STANDBY"` and the ContentItem is `<ContentItem source="STANDBY" isPresetable="false" />`.
 
 ## WebSocket `:8080` (Phase 5 — not yet exercised)
 

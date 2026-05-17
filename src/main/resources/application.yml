@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: soundtouch-radio
+
+soundtouch:
+  host: 10.0.0.148
+  http-port: 8090
+  ws-port: 8080
+  connect-timeout: 2s
+  read-timeout: 5s
+
+server:
+  port: 8080
