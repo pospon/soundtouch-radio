@@ -7,9 +7,13 @@ import cz.poposkoc.radio.state.PlayerState;
 import cz.poposkoc.radio.state.PlayerStateSnapshot;
 import cz.poposkoc.radio.stations.StationRegistry;
 import cz.poposkoc.radio.stations.StationService;
+import cz.poposkoc.radio.stations.Station;
+import cz.poposkoc.radio.stations.StationNotFoundException;
+import cz.poposkoc.radio.web.dto.StationCatalogEntry;
 import cz.poposkoc.radio.web.dto.StationView;
 import cz.poposkoc.radio.web.dto.VolumeRequest;
 import cz.poposkoc.radio.web.dto.VolumeView;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -50,9 +54,35 @@ class RadioController {
         return playerState.snapshot();
     }
 
+    /**
+     * JSON descriptor for the SoundTouch firmware's LOCAL_INTERNET_RADIO loader.
+     * Stored as a preset's `location` URL; the speaker fetches this JSON, reads
+     * audio.streamUrl, then plays that. Must be served over plain HTTP — the
+     * firmware does not follow HTTPS.
+     */
+    @GetMapping(path = "/stations/{stationId}/station.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    StationCatalogEntry stationCatalog(@PathVariable String stationId) {
+        Station station = registry.findById(stationId)
+                .orElseThrow(() -> new StationNotFoundException(stationId));
+        String streamUrl = station.stream() != null && !station.stream().isBlank()
+                ? station.stream()
+                : station.tunein();
+        return StationCatalogEntry.forLiveRadio(station.name(), streamUrl);
+    }
+
     @PostMapping("/play/{stationId}")
     ResponseEntity<Void> play(@PathVariable String stationId) {
         stationService.play(stationId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Pin a station into one of the speaker's 6 preset slots (for the Bose IR remote). */
+    @PostMapping("/presets/{slot}/{stationId}")
+    ResponseEntity<Void> pin(@PathVariable int slot, @PathVariable String stationId) {
+        if (slot < 1 || slot > 6) {
+            throw new ResponseStatusException(BAD_REQUEST, "Preset slot must be 1..6");
+        }
+        stationService.pin(stationId, slot);
         return ResponseEntity.noContent().build();
     }
 

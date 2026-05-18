@@ -1,3 +1,7 @@
+soundtouch:
+  # Pi's LAN IP — what the speaker uses to reach our app over plain HTTP.
+  catalog-base-url: http://10.0.0.221:8080
+
 radio:
   buttons:
     enabled: true

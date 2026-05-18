@@ -8,6 +8,10 @@ soundtouch:
   ws-port: 8080
   connect-timeout: 2s
   read-timeout: 5s
+  # URL the speaker uses to fetch our station JSON. HTTP only.
+  # On the Pi: http://10.0.0.221:8080 (host port for the container).
+  catalog-base-url: http://localhost:8080
+  scratch-preset-slot: 6
 
 server:
   port: 8080

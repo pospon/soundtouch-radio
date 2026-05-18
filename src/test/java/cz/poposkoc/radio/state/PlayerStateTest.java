@@ -61,7 +61,7 @@ class PlayerStateTest {
         var state = newPlayerState(mock(ApplicationEventPublisher.class));
 
         state.contentItemFromSpeaker(new ContentItem(
-                "LOCAL_INTERNET_RADIO", "http://example.test/x", "", true, "ignored speaker label"));
+                "LOCAL_INTERNET_RADIO", null, "http://example.test/x", "", true, "ignored speaker label"));
 
         assertThat(state.snapshot().stationId()).isEqualTo("vltava");
         assertThat(state.snapshot().stationName()).isEqualTo("Vltava");
@@ -69,11 +69,24 @@ class PlayerStateTest {
     }
 
     @Test
+    void contentItemFromSpeakerMatchesByCatalogUrlPathAfterFirmware27_0_6() {
+        var state = newPlayerState(mock(ApplicationEventPublisher.class));
+
+        state.contentItemFromSpeaker(new ContentItem(
+                "LOCAL_INTERNET_RADIO", "stationurl",
+                "http://10.0.0.221:8080/api/stations/vltava/station.json",
+                "", true, "Vltava"));
+
+        assertThat(state.snapshot().stationId()).isEqualTo("vltava");
+        assertThat(state.snapshot().stationName()).isEqualTo("Vltava");
+    }
+
+    @Test
     void contentItemFromSpeakerFallsBackToSpeakerItemNameWhenNoMatch() {
         var state = newPlayerState(mock(ApplicationEventPublisher.class));
 
         state.contentItemFromSpeaker(new ContentItem(
-                "LOCAL_INTERNET_RADIO", "http://example.test/unknown", "", true, "Some Radio"));
+                "LOCAL_INTERNET_RADIO", null, "http://example.test/unknown", "", true, "Some Radio"));
 
         assertThat(state.snapshot().stationId()).isNull();
         assertThat(state.snapshot().stationName()).isEqualTo("Some Radio");

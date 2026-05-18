@@ -1,5 +1,6 @@
 package cz.poposkoc.radio.stations;
 
+import cz.poposkoc.radio.config.SoundTouchProperties;
 import cz.poposkoc.radio.soundtouch.SoundTouchClient;
 import cz.poposkoc.radio.soundtouch.dto.ContentItem;
 import cz.poposkoc.radio.state.PlayerState;
@@ -17,22 +18,56 @@ public class StationService {
     private final StationRegistry registry;
     private final SoundTouchClient client;
     private final PlayerState playerState;
+    private final SoundTouchProperties props;
 
-    public StationService(StationRegistry registry, SoundTouchClient client, PlayerState playerState) {
+    public StationService(StationRegistry registry,
+                          SoundTouchClient client,
+                          PlayerState playerState,
+                          SoundTouchProperties props) {
         this.registry = registry;
         this.client = client;
         this.playerState = playerState;
+        this.props = props;
     }
 
+    /**
+     * Play a station. Firmware 27.0.6 of the SoundTouch 30 removed direct-URL
+     * {@code source="LOCAL_INTERNET_RADIO"} support for {@code /select}, but kept
+     * it for stored presets that resolve via a JSON URL. We store the requested
+     * station into our scratch preset slot (default: 6) and trigger PRESET_N.
+     */
     public Station play(String stationId) {
         Station station = registry.findById(stationId)
                 .orElseThrow(() -> new StationNotFoundException(stationId));
 
+        ContentItem item = toCatalogContentItem(station);
         wakeIfStandby();
-        client.select(toContentItem(station));
+        client.storePreset(props.scratchPresetSlot(), item);
+        client.playPreset(props.scratchPresetSlot());
         playerState.stationPlaying(station);
-        log.info("Playing station {} ({})", station.id(), station.name());
+        log.info("Playing station {} ({}) via preset slot {}",
+                station.id(), station.name(), props.scratchPresetSlot());
         return station;
+    }
+
+    /**
+     * Pin a station into one of the speaker's 6 preset slots so the physical
+     * remote / front-panel buttons play it. The preset's {@code location} points
+     * at our station-catalog JSON endpoint.
+     */
+    public Station pin(String stationId, int slot) {
+        Station station = registry.findById(stationId)
+                .orElseThrow(() -> new StationNotFoundException(stationId));
+        client.storePreset(slot, toCatalogContentItem(station));
+        log.info("Pinned station {} ({}) to preset slot {}",
+                station.id(), station.name(), slot);
+        return station;
+    }
+
+    private ContentItem toCatalogContentItem(Station station) {
+        String catalogUrl = props.catalogBaseUrl()
+                + "/api/stations/" + station.id() + "/station.json";
+        return ContentItem.catalog(catalogUrl, station.name());
     }
 
     private void wakeIfStandby() {
@@ -48,12 +83,5 @@ public class StationService {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for speaker to wake", e);
         }
-    }
-
-    private static ContentItem toContentItem(Station station) {
-        if (station.stream() != null && !station.stream().isBlank()) {
-            return ContentItem.localInternetRadio(station.stream(), station.name());
-        }
-        return ContentItem.tuneIn(station.tunein(), station.name());
     }
 }

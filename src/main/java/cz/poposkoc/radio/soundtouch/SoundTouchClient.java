@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.databind.exc.MismatchedInputException;
@@ -53,6 +54,27 @@ public class SoundTouchClient {
         postXml("/select", item);
     }
 
+    /**
+     * Store a ContentItem as a preset on slots 1..6. New-style flow on firmware 27.0.6:
+     * speaker stores the item locally and resolves `location` (a JSON URL we host) when
+     * the preset is played via {@link #pressKey "PRESET_N"} or the physical remote.
+     */
+    public void storePreset(int slot, ContentItem item) {
+        if (slot < 1 || slot > 6) {
+            throw new IllegalArgumentException("Preset slot must be 1..6, got " + slot);
+        }
+        String inner = serialize(item);
+        String body = "<preset id=\"" + slot + "\">" + inner + "</preset>";
+        postRawXml("/storePreset", body);
+    }
+
+    public void playPreset(int slot) {
+        if (slot < 1 || slot > 6) {
+            throw new IllegalArgumentException("Preset slot must be 1..6, got " + slot);
+        }
+        pressKey("PRESET_" + slot);
+    }
+
     public int setVolume(int level) {
         int clamped = Math.clamp(level, MIN_VOLUME, MAX_VOLUME);
         postXml("/volume", new VolumeCommand(clamped));
@@ -71,23 +93,56 @@ public class SoundTouchClient {
     }
 
     private <T> T get(String path, Class<T> type) {
-        byte[] body = http.get()
+        byte[] body = exchange(() -> http.get()
                 .uri(path)
                 .accept(MediaType.APPLICATION_XML)
                 .retrieve()
-                .body(byte[].class);
+                .body(byte[].class), "GET " + path);
         return parse(body, type, "GET " + path);
     }
 
     private void postXml(String path, Object payload) {
-        byte[] body = http.post()
+        byte[] body = exchange(() -> http.post()
                 .uri(path)
                 .contentType(MediaType.APPLICATION_XML)
                 .accept(MediaType.APPLICATION_XML)
                 .body(payload)
                 .retrieve()
-                .body(byte[].class);
+                .body(byte[].class), "POST " + path);
         verifyNotError(body, "POST " + path);
+    }
+
+    private void postRawXml(String path, String rawXml) {
+        byte[] body = exchange(() -> http.post()
+                .uri(path)
+                .contentType(MediaType.APPLICATION_XML)
+                .accept(MediaType.APPLICATION_XML)
+                .body(rawXml)
+                .retrieve()
+                .body(byte[].class), "POST " + path);
+        verifyNotError(body, "POST " + path);
+    }
+
+    private byte[] exchange(java.util.function.Supplier<byte[]> call, String context) {
+        try {
+            return call.get();
+        } catch (HttpStatusCodeException e) {
+            // Speaker sometimes returns HTTP 500 with an <errors> body. Translate.
+            byte[] errBody = e.getResponseBodyAsByteArray();
+            if (errBody != null && errBody.length > 0) {
+                verifyNotError(errBody, context);
+            }
+            throw new SoundTouchException(
+                    "SoundTouch " + context + " failed with HTTP " + e.getStatusCode(), e);
+        }
+    }
+
+    private String serialize(Object payload) {
+        try {
+            return xmlMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            throw new SoundTouchException("Cannot serialize " + payload.getClass().getSimpleName(), e);
+        }
     }
 
     private <T> T parse(byte[] body, Class<T> type, String context) {

@@ -121,8 +121,8 @@ class SoundTouchClientTest {
     void select_postsContentItemWithLocalInternetRadioSource() throws Exception {
         enqueueXml(Fixtures.load("select_ok.xml"));
 
-        client.select(ContentItem.localInternetRadio(
-                "http://icecast2.rozhlas.cz/vltava-mp3-128", "Vltava"));
+        client.select(ContentItem.catalog(
+                "http://10.0.0.221:8080/api/stations/vltava/station.json", "Vltava"));
 
         RecordedRequest req = takeRequest();
         assertThat(req.getMethod()).isEqualTo("POST");
@@ -133,7 +133,8 @@ class SoundTouchClientTest {
         assertThat(body)
                 .contains("<ContentItem")
                 .contains("source=\"LOCAL_INTERNET_RADIO\"")
-                .contains("location=\"http://icecast2.rozhlas.cz/vltava-mp3-128\"")
+                .contains("type=\"stationurl\"")
+                .contains("location=\"http://10.0.0.221:8080/api/stations/vltava/station.json\"")
                 .contains("<itemName>Vltava</itemName>");
     }
 
@@ -142,7 +143,7 @@ class SoundTouchClientTest {
         enqueueXml(Fixtures.load("error_1005.xml"));
 
         assertThatThrownBy(() -> client.select(
-                new ContentItem("INTERNET_RADIO",
+                new ContentItem("INTERNET_RADIO", null,
                         "http://icecast2.rozhlas.cz/vltava-mp3-128", "", true, "Vltava")))
                 .isInstanceOf(SoundTouchException.class)
                 .satisfies(ex -> {
@@ -154,6 +155,24 @@ class SoundTouchClientTest {
                             .extracting("value", "name")
                             .containsExactly(1005, "UNKNOWN_SOURCE_ERROR");
                 });
+    }
+
+    @Test
+    void storePreset_wrapsContentItemInPresetWithSlot() throws Exception {
+        enqueueXml(Fixtures.load("select_ok.xml"));
+
+        client.storePreset(4, ContentItem.catalog(
+                "http://10.0.0.221:8080/api/stations/vltava/station.json", "Vltava"));
+
+        RecordedRequest req = takeRequest();
+        assertThat(req.getMethod()).isEqualTo("POST");
+        assertThat(req.getPath()).isEqualTo("/storePreset");
+        assertThat(req.getBody().readUtf8())
+                .startsWith("<preset id=\"4\"><ContentItem")
+                .contains("source=\"LOCAL_INTERNET_RADIO\"")
+                .contains("type=\"stationurl\"")
+                .contains("location=\"http://10.0.0.221:8080/api/stations/vltava/station.json\"")
+                .endsWith("</preset>");
     }
 
     @Test

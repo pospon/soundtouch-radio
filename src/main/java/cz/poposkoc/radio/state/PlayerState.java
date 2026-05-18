@@ -59,11 +59,26 @@ public class PlayerState {
     }
 
     private Optional<Station> matchToStation(ContentItem item) {
-        if (item.location() == null || item.location().isBlank()) {
+        String location = item.location();
+        if (location == null || location.isBlank()) {
             return Optional.empty();
         }
+        // Catalog-URL form (post-firmware-27.0.6): ".../api/stations/{id}/station.json"
+        int idx = location.indexOf("/api/stations/");
+        if (idx >= 0) {
+            String tail = location.substring(idx + "/api/stations/".length());
+            int slash = tail.indexOf('/');
+            if (slash > 0) {
+                String id = tail.substring(0, slash);
+                Optional<Station> byId = registry.findById(id);
+                if (byId.isPresent()) {
+                    return byId;
+                }
+            }
+        }
+        // Raw-stream form (legacy; old presets, external app activity)
         return registry.all().stream()
-                .filter(s -> item.location().equals(s.stream()) || item.location().equals(s.tunein()))
+                .filter(s -> location.equals(s.stream()) || location.equals(s.tunein()))
                 .findFirst();
     }
 
