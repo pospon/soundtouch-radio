@@ -4,6 +4,48 @@ Things that surprised us. New entries go on top. Each entry: what happened, why,
 
 ---
 
+## 2026-05-18 · Bose firmware 27.0.6 dropped direct-URL `LOCAL_INTERNET_RADIO`; preset-via-JSON is the new path
+
+Speaker auto-upgraded from `27.0.3` → `27.0.6` during a power-cycle on 2026-05-18. Post-update:
+
+- `GET /sources` no longer lists `LOCAL_INTERNET_RADIO` or `TUNEIN` — only `AUX` and `ALEXA` are READY.
+- `POST /select` with **any** non-listed source returns `1005 UNKNOWN_SOURCE_ERROR`. The shape that worked in Phase 1 (direct stream URL in `location`) is dead.
+- The plain-stream-URL workaround for the cloud-sunset was a 27.0.x-era hack; Bose closed it in 27.0.6 in favour of the documented post-sunset shape.
+
+**The new path** (community gist [rody64/98a59990](https://gist.github.com/rody64/98a59990ff60ea962cac72cbe93edf56), confirmed against our device):
+
+1. App hosts a **JSON catalog** endpoint, one per station:
+   ```
+   GET http://10.0.0.221:8080/api/stations/vltava/station.json
+   ```
+   returns
+   ```json
+   {"audio":{"hasPlaylist":true,"isRealtime":true,"streamUrl":"http://icecast2.rozhlas.cz/vltava-mp3-128"},"name":"ČRo Vltava","streamType":"liveRadio"}
+   ```
+2. **Store the station as a preset** (slots 1..6) with the new shape:
+   ```xml
+   <preset id="6">
+     <ContentItem source="LOCAL_INTERNET_RADIO" type="stationurl"
+                  location="http://10.0.0.221:8080/api/stations/vltava/station.json"
+                  isPresetable="true">
+       <itemName>ČRo Vltava</itemName>
+     </ContentItem>
+   </preset>
+   ```
+   `POST /storePreset` with that body.
+3. **Trigger playback** via `POST /key PRESET_6` (or the speaker's physical button / Bose IR remote button for that slot).
+
+**Critical sub-gotchas:**
+- `location` must be **plain HTTP**. The firmware does not follow HTTPS redirects (we tried GitHub-raw HTTPS — `INVALID_SOURCE`).
+- `type="stationurl"` is mandatory on the new shape. Omit it and storage looks accepted but playback yields `INVALID_SOURCE`.
+- `POST /select` with the new shape (catalog URL) still 1005's — only the `/storePreset` + `PRESET_N` path works. Direct selection is gone.
+
+**Bonus** (the original "remote control" hope from before): with a station permanently pinned via `POST /storePreset` into a non-scratch slot (1..5), the Bose IR remote's preset buttons play it. The IR path on 27.0.6 calls the local resolver, fetches our JSON, plays the stream. The cloud-broken IR path from earlier today was specifically caused by the slots containing legacy TuneIn refs whose resolver is still cloud-dependent.
+
+**How to apply:** never call `client.select(item)` for streaming; always go through `StationService.play` (scratch-slot preset + PRESET_N) or `StationService.pin` (permanent slot). Keep `soundtouch.catalog-base-url` configured to a host:port the speaker can reach over HTTP.
+
+---
+
 ## 2026-05-17 · Spring's `@DefaultValue` is parsed as decimal even for hex-looking strings
 
 Set `@DefaultValue("0x3C")` on an `int` field expecting Spring to honour Java's hex literal convention. It did not — bind failed with a `NumberFormatException` because the binder runs `Integer.parseInt(...)` (radix 10). Switched to `@DefaultValue("60")` with a YAML comment `# 0x3C` for readers. Same applies to YAML values: write `i2c-address: 60` (or `i2c-address: 0x3C` if you really need it, since SnakeYAML *does* honour hex). Don't trust them to match.

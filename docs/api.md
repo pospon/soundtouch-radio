@@ -27,9 +27,41 @@ Health-check: any 200 with parseable `<info>` = device alive.
 
 Returns `<sources><sourceItem ... /></sources>`. `status="READY"` items are usable in `/select`. See [`device.md`](device.md#ready-sources) for what's READY on our unit. **Do not hardcode source names from the plan** — see [`gotchas.md`](gotchas.md).
 
-## `POST /select`
+## `POST /storePreset` + `POST /key PRESET_N` (current flow on firmware 27.0.6+)
 
-Body is a single `<ContentItem>`. Source-specific shapes:
+The current playback path. Store a station as a preset whose `location` points at a JSON catalog URL we host:
+
+```xml
+<preset id="6">
+  <ContentItem source="LOCAL_INTERNET_RADIO" type="stationurl"
+               location="http://10.0.0.221:8080/api/stations/vltava/station.json"
+               isPresetable="true">
+    <itemName>ČRo Vltava</itemName>
+  </ContentItem>
+</preset>
+```
+
+POST to `/storePreset`. The JSON our app serves must be:
+
+```json
+{
+  "audio": {
+    "hasPlaylist": true,
+    "isRealtime": true,
+    "streamUrl": "http://icecast2.rozhlas.cz/vltava-mp3-128"
+  },
+  "name": "ČRo Vltava",
+  "streamType": "liveRadio"
+}
+```
+
+`location` must be plain HTTP — the firmware does not follow HTTPS. After storing, trigger via `POST /key PRESET_N` (press+release pair). **The Bose IR remote's preset buttons trigger the same firmware path**, so pinning a station to slot 1..6 makes the physical remote work for it.
+
+`POST /removePreset` with `<preset id="N"/>` clears a slot.
+
+## `POST /select` (LEGACY — does not work on firmware 27.0.6+)
+
+Body is a single `<ContentItem>`. Source-specific shapes (firmware 27.0.3 only):
 
 **Direct stream URL (Icecast/Shoutcast):**
 ```xml
