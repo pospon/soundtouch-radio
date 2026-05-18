@@ -9,11 +9,9 @@ import cz.poposkoc.radio.stations.StationRegistry;
 import cz.poposkoc.radio.stations.StationService;
 import cz.poposkoc.radio.stations.Station;
 import cz.poposkoc.radio.stations.StationNotFoundException;
-import cz.poposkoc.radio.web.dto.StationCatalogEntry;
 import cz.poposkoc.radio.web.dto.StationView;
 import cz.poposkoc.radio.web.dto.VolumeRequest;
 import cz.poposkoc.radio.web.dto.VolumeView;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -59,15 +57,33 @@ class RadioController {
      * Stored as a preset's `location` URL; the speaker fetches this JSON, reads
      * audio.streamUrl, then plays that. Must be served over plain HTTP — the
      * firmware does not follow HTTPS.
+     *
+     * Returns a raw byte[] with a strict `application/json` Content-Type (no
+     * charset suffix) — the firmware's HTTP parser is fussy. Tested working
+     * shape uses ASCII-only field names so no UTF-8 encoding choice is needed.
      */
-    @GetMapping(path = "/stations/{stationId}/station.json", produces = MediaType.APPLICATION_JSON_VALUE)
-    StationCatalogEntry stationCatalog(@PathVariable String stationId) {
+    @GetMapping(path = "/stations/{stationId}/station.json")
+    ResponseEntity<byte[]> stationCatalog(@PathVariable String stationId) {
         Station station = registry.findById(stationId)
                 .orElseThrow(() -> new StationNotFoundException(stationId));
         String streamUrl = station.stream() != null && !station.stream().isBlank()
                 ? station.stream()
                 : station.tunein();
-        return StationCatalogEntry.forLiveRadio(station.name(), streamUrl);
+        byte[] body = catalogJsonBytes(station.name(), streamUrl);
+        return ResponseEntity.ok()
+                .header("Content-Type", "application/json")
+                .body(body);
+    }
+
+    private static byte[] catalogJsonBytes(String name, String streamUrl) {
+        // Hand-rolled JSON to match the documented working shape exactly: no
+        // pretty-printing, no extras, matching field order from the community gist.
+        String escapedName = name.replace("\\", "\\\\").replace("\"", "\\\"");
+        String escapedUrl = streamUrl.replace("\\", "\\\\").replace("\"", "\\\"");
+        String json = "{\"audio\":{\"hasPlaylist\":true,\"isRealtime\":true,\"streamUrl\":\""
+                + escapedUrl + "\"},\"name\":\""
+                + escapedName + "\",\"streamType\":\"liveRadio\"}";
+        return json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     @PostMapping("/play/{stationId}")
