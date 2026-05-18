@@ -58,22 +58,19 @@ public class PlayerState {
         ));
     }
 
+    private static final java.util.regex.Pattern CATALOG_URL =
+            java.util.regex.Pattern.compile("/(?:s|api/stations)/([^/]+?)(?:/station)?\\.json");
+
     private Optional<Station> matchToStation(ContentItem item) {
         String location = item.location();
         if (location == null || location.isBlank()) {
             return Optional.empty();
         }
-        // Catalog-URL form (post-firmware-27.0.6): ".../api/stations/{id}/station.json"
-        int idx = location.indexOf("/api/stations/");
-        if (idx >= 0) {
-            String tail = location.substring(idx + "/api/stations/".length());
-            int slash = tail.indexOf('/');
-            if (slash > 0) {
-                String id = tail.substring(0, slash);
-                Optional<Station> byId = registry.findById(id);
-                if (byId.isPresent()) {
-                    return byId;
-                }
+        var m = CATALOG_URL.matcher(location);
+        if (m.find()) {
+            Optional<Station> byId = registry.findById(m.group(1));
+            if (byId.isPresent()) {
+                return byId;
             }
         }
         // Raw-stream form (legacy; old presets, external app activity)

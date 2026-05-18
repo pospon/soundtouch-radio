@@ -74,7 +74,7 @@ class PlayerStateTest {
 
         state.contentItemFromSpeaker(new ContentItem(
                 "LOCAL_INTERNET_RADIO", "stationurl",
-                "http://10.0.0.221:8080/api/stations/vltava/station.json",
+                "http://10.0.0.221:8080/s/vltava.json",
                 "", true, "Vltava"));
 
         assertThat(state.snapshot().stationId()).isEqualTo("vltava");

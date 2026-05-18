@@ -60,7 +60,7 @@ class StationServiceTest {
         assertThat(item.type()).isEqualTo("stationurl");
         assertThat(item.location())
                 .as("location must point at our catalog JSON, not the raw stream")
-                .isEqualTo(CATALOG_BASE + "/api/stations/vltava/station.json");
+                .isEqualTo(CATALOG_BASE + "/s/vltava.json");
         assertThat(item.itemName()).isEqualTo("Vltava");
     }
 
@@ -73,7 +73,7 @@ class StationServiceTest {
         ArgumentCaptor<ContentItem> captor = ArgumentCaptor.forClass(ContentItem.class);
         verify(client).storePreset(eq(SCRATCH_SLOT), captor.capture());
         assertThat(captor.getValue().location())
-                .isEqualTo(CATALOG_BASE + "/api/stations/fip/station.json");
+                .isEqualTo(CATALOG_BASE + "/s/fip.json");
     }
 
     @Test
@@ -105,7 +105,7 @@ class StationServiceTest {
         verify(client).storePreset(eq(1), captor.capture());
         verify(client, never()).playPreset(anyInt());
         assertThat(captor.getValue().location())
-                .isEqualTo(CATALOG_BASE + "/api/stations/vltava/station.json");
+                .isEqualTo(CATALOG_BASE + "/s/vltava.json");
     }
 
     private static NowPlaying awake(String source) {

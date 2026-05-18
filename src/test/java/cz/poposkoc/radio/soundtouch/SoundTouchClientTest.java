@@ -122,7 +122,7 @@ class SoundTouchClientTest {
         enqueueXml(Fixtures.load("select_ok.xml"));
 
         client.select(ContentItem.catalog(
-                "http://10.0.0.221:8080/api/stations/vltava/station.json", "Vltava"));
+                "http://10.0.0.221:8080/s/vltava.json", "Vltava"));
 
         RecordedRequest req = takeRequest();
         assertThat(req.getMethod()).isEqualTo("POST");
@@ -134,7 +134,7 @@ class SoundTouchClientTest {
                 .contains("<ContentItem")
                 .contains("source=\"LOCAL_INTERNET_RADIO\"")
                 .contains("type=\"stationurl\"")
-                .contains("location=\"http://10.0.0.221:8080/api/stations/vltava/station.json\"")
+                .contains("location=\"http://10.0.0.221:8080/s/vltava.json\"")
                 .contains("<itemName>Vltava</itemName>");
     }
 
@@ -162,7 +162,7 @@ class SoundTouchClientTest {
         enqueueXml(Fixtures.load("select_ok.xml"));
 
         client.storePreset(4, ContentItem.catalog(
-                "http://10.0.0.221:8080/api/stations/vltava/station.json", "Vltava"));
+                "http://10.0.0.221:8080/s/vltava.json", "Vltava"));
 
         RecordedRequest req = takeRequest();
         assertThat(req.getMethod()).isEqualTo("POST");
@@ -171,7 +171,7 @@ class SoundTouchClientTest {
                 .startsWith("<preset id=\"4\"><ContentItem")
                 .contains("source=\"LOCAL_INTERNET_RADIO\"")
                 .contains("type=\"stationurl\"")
-                .contains("location=\"http://10.0.0.221:8080/api/stations/vltava/station.json\"")
+                .contains("location=\"http://10.0.0.221:8080/s/vltava.json\"")
                 .endsWith("</preset>");
     }
 

@@ -65,8 +65,11 @@ public class StationService {
     }
 
     private ContentItem toCatalogContentItem(Station station) {
+        // Short path (root-mapped) — observed: firmware 27.0.6 silently rejects
+        // /api/stations/{id}/station.json (never fetches), but a short root-level
+        // URL matches the documented working examples.
         String catalogUrl = props.catalogBaseUrl()
-                + "/api/stations/" + station.id() + "/station.json";
+                + "/s/" + station.id() + ".json";
         return ContentItem.catalog(catalogUrl, station.name());
     }
 
