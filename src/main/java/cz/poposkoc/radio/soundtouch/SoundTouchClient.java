@@ -101,23 +101,26 @@ public class SoundTouchClient {
         return parse(body, type, "GET " + path);
     }
 
+    private static final MediaType XML_UTF8 =
+            new MediaType("application", "xml", java.nio.charset.StandardCharsets.UTF_8);
+
     private void postXml(String path, Object payload) {
-        byte[] body = exchange(() -> http.post()
-                .uri(path)
-                .contentType(MediaType.APPLICATION_XML)
-                .accept(MediaType.APPLICATION_XML)
-                .body(payload)
-                .retrieve()
-                .body(byte[].class), "POST " + path);
-        verifyNotError(body, "POST " + path);
+        // Serialize to UTF-8 bytes ourselves so non-ASCII (e.g. Č in itemName) survives
+        // the trip — Spring's default XML converter would emit ISO-8859-1.
+        byte[] xml = serialize(payload).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        postRawXmlBytes(path, xml);
     }
 
     private void postRawXml(String path, String rawXml) {
+        postRawXmlBytes(path, rawXml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private void postRawXmlBytes(String path, byte[] xmlUtf8) {
         byte[] body = exchange(() -> http.post()
                 .uri(path)
-                .contentType(MediaType.APPLICATION_XML)
+                .contentType(XML_UTF8)
                 .accept(MediaType.APPLICATION_XML)
-                .body(rawXml)
+                .body(xmlUtf8)
                 .retrieve()
                 .body(byte[].class), "POST " + path);
         verifyNotError(body, "POST " + path);

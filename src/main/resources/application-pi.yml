@@ -7,3 +7,19 @@ radio:
     enabled: true
   display:
     enabled: true
+
+# Diagnostics for the firmware 27.0.6 preset-fetch debugging.
+server:
+  tomcat:
+    accesslog:
+      enabled: true
+      directory: /tmp
+      prefix: access
+      suffix: .log
+      buffered: false
+      pattern: '%h %t "%r" %s %b %D ms ua="%{User-Agent}i"'
+
+logging:
+  level:
+    cz.poposkoc.radio.soundtouch.SoundTouchEventListener: DEBUG
+    cz.poposkoc.radio.soundtouch.UpdatesDispatcher: DEBUG
